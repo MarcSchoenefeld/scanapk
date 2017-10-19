@@ -1,6 +1,5 @@
 import os
 import sys
-
 import tempfile
 import subprocess
 import zipfile
@@ -150,11 +149,6 @@ for l in p:
             otherelf.append(l)
  #       if head=='PK\x03\x04":
  #           morezips.append(l)
-         
-
-            
-        
-
         
 print "otherelf=%s" % otherelf
  
