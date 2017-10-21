@@ -1,4 +1,5 @@
 import os
+import os.path
 import sys
 import tempfile
 import subprocess
@@ -7,6 +8,15 @@ import math
 import yara
 
 
+def  filesindir(rootdir):
+    files=[]
+    for dirpath, dirnames, filenames in os.walk(rootdir):
+        for filename in [f for f in filenames]:
+#        for filename in [f for f in filenames if f.endswith(".log")]:
+            f=os.path.join(dirpath, filename)
+            files.append(f)
+    return files
+    
 def rec_unzip(initial_zip,store):
     still_unhandled_zipfiles=True
     current_zip=initial_zip
@@ -110,10 +120,26 @@ def contains(a,b):
 
 thefile = sys.argv[1]
 
+outfile=thefile+".txt"
+
+
+i=0
+for arg in sys.argv:
+    
+    if arg=="--outfile":
+        outfile=sys.argv[i+1]
+    i=i+1
+
+    
+print "[+] will write output to \n[+] %s" % outfile
+
+if outfile !="-":
+    sys.stdout=open(outfile,"w")
+
 store=tempfile.mkdtemp("apk","scanapk")
-print store
+print "[+] artifacts temporary store at %s" % store
 z = zipfile.ZipFile(thefile)
-print z
+#print z
 z.extractall(store)
 
 #unpack_recursive_zip(thefile,store)
@@ -138,37 +164,79 @@ not3rdparty_perms=["android.permission.ACCESS_CHECKIN_PROPERTIES","android.permi
 
 
 otherelf=[]
-morezips=[] # no recursion yet, one level zip resolver
+#morezips=[] # no recursion yet, one level zip resolver
 
-for l in p:
-    if l.endswith("/"):
-        continue
-    with open(store+"/"+l, 'rb') as f:
-        head=f.read(4)
-        if head[1:]=="ELF":
-            otherelf.append(l)
- #       if head=='PK\x03\x04":
- #           morezips.append(l)
+moreunpacked=True
+
+while moreunpacked==True:
+    otherelf=[]
+    moreunpacked=False
+    #q=p
+    p=filesindir(store)
+  
+    for l in p:
+        if l.endswith("/"):
+            continue
+        filepath="%s/%s" % (store,l)
+        filepath=l #"%s/%s" % (store,l)
+        with open(filepath, 'rb') as f:
+            head=f.read(4)
+            if head[1:]=="ELF":
+                otherelf.append(l)
+            if head=='PK\x03\x04':
+                #print "found potential zip in %s" % (l)
+                #morezips.append(l)
+                try:
+                    z = zipfile.ZipFile(l)
+                    
+                    newpath=l+".unpacked"
+                    if os.path.exists(newpath):
+                        #print "%s exists, skipping unpack" % (newpath)
+                        continue
+                    #print "unpack %s to %s" % (l,newpath)
+                    z.extractall(newpath)
+                    pp = z.namelist()
+                                            
+                    moreunpacked=True
+                except:
+                    pass
         
-print "otherelf=%s" % otherelf
- 
+print "elf files found=%s" % otherelf
+#print "morezips=%s" % morezips 
 
-print sofiles
-#sys.exit(0) 
-print
+
+#sys.exit(0)
+
 
 str=[]
+print 
 
 #for theso in sofiles:
 for theso in otherelf:
-    fullso=subprocess.check_output(["strings","%s/%s" % (store,theso)])
+    reltheso=theso.replace(store,"")
+    reltheso=reltheso.replace("\\","/")
+    r=len(reltheso)
+    
+    print 
+    print "=" * r 
+    print reltheso
+    print "=" * r 
+    #fullso=subprocess.check_output(["strings","%s/%s" % (store,theso)])
+    fullso=subprocess.check_output(["strings","%s" % (theso)])
     size=-1
     try:
-        zipinfo = z.getinfo(theso)
-        size=zipinfo.file_size
+        #zipinfo = z.getinfo(theso)
+        #size=zipinfo.file_size
+        size=os.path.getsize(theso)
     except:
         pass
-    sha256=subprocess.check_output(["sha256sum","%s/%s" % (store,theso)]).split()[0][1:]
+#    sha256=subprocess.check_output(["sha256sum","%s/%s" % (store,theso)]).split()[0][1:]
+    sha256=subprocess.check_output(["sha256sum","%s" % (theso)]).split()[0][1:]
+
+    radare2full=subprocess.check_output(["c:\\Program Files (x86)\\Radare2\\radare2.exe","-q","-c", "ij",theso])
+
+    radare2bin=subprocess.check_output(["c:\\Program Files (x86)\\Radare2\\radare2.exe","-q","-c", "iIj",theso])
+
     p = fullso.split("\n")
     gcc = "Unknown"
     gold = "Unknown"
@@ -265,19 +333,19 @@ for theso in otherelf:
             unziplib_version=l
 			
         if contains(l,"bbd85d235f7037c6a033a9690534391ffeacecc8"):
-            sqlite_version="3.15.2 (bbd85d235f7037c6a033a9690534391ffeacecc8)"
+            sqlite_version="3.15.2 (bbd85d235f7037c6a033a9690534391ffeacecc8, 2016-11-28)"
 
         if contains(l,"3d862f207e3adc00f78066799ac5a8c282430a5f"):
-            sqlite_version="3.11.0 (3d862f207e3adc00f78066799ac5a8c282430a5f)"
+            sqlite_version="3.11.0 (3d862f207e3adc00f78066799ac5a8c282430a5f, 2016-02-15)"
 
         if contains(l,"7dd4968f235d6e1ca9547cda9cf3bd570e1609ef"):
-            sqlite_version="3.8.0.2 (7dd4968f235d6e1ca9547cda9cf3bd570e1609ef)"
+            sqlite_version="3.8.0.2 (7dd4968f235d6e1ca9547cda9cf3bd570e1609ef, 2013-09-03)"
 
         if contains(l,"979f04392853b8053817a3eea2fc679947b437fd"):
-            sqlite_version="3.16.1 (979f04392853b8053817a3eea2fc679947b437fd)"
+            sqlite_version="3.16.1 (979f04392853b8053817a3eea2fc679947b437fd, 2017-01-03)"
 		
         if contains(l,"118a3b35693b134d56ebd780123b7fd6f1497668"):
-            sqlite_version="3.7.17 (118a3b35693b134d56ebd780123b7fd6f1497668)"
+            sqlite_version="3.7.17 (118a3b35693b134d56ebd780123b7fd6f1497668, 2013-05-20)"
 		
         
         
@@ -295,7 +363,7 @@ for theso in otherelf:
             str.append((l,theso))
         
         
-    print "%s:" % theso
+    #print "%s:" % theso
     
     print "%s, %s%s" % (gcc,gold,  jnitext)
     if v8:
@@ -342,6 +410,8 @@ for theso in otherelf:
         
     print "SHA256=%s" % sha256
     print "Size=%s" % size
+    print "Header (r2) full=%s" % radare2full
+    print "Header (r2) bin=%s" % radare2bin
     print "\n"
 
 
@@ -385,24 +455,18 @@ if thefile.lower().endswith("apk"):
         lprint = l.replace("android.permission.","a.p.")
 #        if l.startswith("android.permission")
         if l in dangerous_perms:
-            print "[!] %s" %lprint
+            print "[DANGEROUS] %s" %lprint
         
         elif l in not3rdparty_perms:
-            print "[3] %s" %lprint
+            print "[NOT3PARTY] %s" %lprint
     
         else:
-            print "[-] %s" %lprint
+            print "[---------] %s" %lprint
     
 
     
 
 #danger_perms = [x for x in perms if (x in dangerous_perms)]
-
-
-
-#:\Users\STARBUCK>d:\android\SDK\build-tools\25.0.3\aapt.exe d permissions k:\raccon\Raccoon.old\content\apps\antivius\com.aegislab.sd3prj.antivirus.free\com.aegislab.sd3prj.antivirus.free-304.apk
-
-
 
 # TODO:
 TODO = "# objdump --syms"
@@ -427,6 +491,7 @@ TODO="""DOT.NET DLL verification, "d:\Program Files\Microsoft SDKs\Windows\v7.1\
 
 TODO=""""d:\Program Files\Microsoft SDKs\Windows\v7.1\Bin\ildasm"  /TEXT /METADATA=MDHEADER "c:\users\starbuck\appdata\local\temp\scanapkmo03lgapk\assets\bin\Data\Managed\Assembly-CSharp.dll""" 
 
+TODO="""expat"""
 
 sys.exit(0)
 
