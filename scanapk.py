@@ -17,6 +17,9 @@ def sha256sum(fn):
     f.close()
     return thehash
 
+def usage():
+    print "Usage: %s {filename}.apk # creates {filename}.apk.txt" % sys.argv[0]
+    return
 
 def  filesindir(rootdir):
     files=[]
@@ -162,6 +165,11 @@ def gettitletext(playstore_id):
 
 
 if __name__=='__main__':
+
+    if len(sys.argv) < 2:
+        usage()
+        sys.exit(-1)
+
     thefile = sys.argv[1]
 
     outfile=thefile+".txt"
